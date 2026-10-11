@@ -1,0 +1,103 @@
+# Armado de países de Voy Por Ahí (1.28.0). Lo escribe y lo dispara el plugin de WordPress (Voy Por Ahí › Países
+# completos › Armar y subir un país): lo que se cambie a mano aquí se pierde la próxima vez que el plugin prepare el
+# repositorio. Las entradas llegan como variables de entorno (env) y ci.sh las vuelve a revisar: nunca se pegan dentro
+# del código de los pasos. El plugin sigue el avance por el nombre de cada paso: si se cambian, deja de entenderlo.
+name: Armar y subir un país
+run-name: "Armar ${{ inputs.nombre }} · vpa-${{ inputs.pedido }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      ruta:
+        description: Ruta del país en Geofabrik (por ejemplo, south-america/argentina)
+        required: true
+        type: string
+      id:
+        description: Identificador del país en la app (por ejemplo, ar)
+        required: true
+        type: string
+      nombre:
+        description: Nombre del país en la app
+        required: true
+        type: string
+      sitio:
+        description: Dirección del sitio de WordPress
+        required: true
+        type: string
+      publica:
+        description: Dirección pública del bucket de Cloudflare R2
+        required: true
+        type: string
+      pedido:
+        description: Número de pedido (lo pone el plugin para seguir el armado)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+# Dos armados del mismo país no corren a la vez (el plugin, además, pide uno por vez).
+concurrency:
+  group: armar-${{ inputs.id }}
+  cancel-in-progress: false
+
+jobs:
+  armar:
+    name: Armar y subir
+    runs-on: ubuntu-24.04
+    # GitHub corta a las 6 horas: un poco antes, para que quede escrito en qué paso estaba.
+    timeout-minutes: 345
+    env:
+      RUTA: ${{ inputs.ruta }}
+      ID: ${{ inputs.id }}
+      NOMBRE: ${{ inputs.nombre }}
+      SITIO: ${{ inputs.sitio }}
+      PUBLICA: ${{ inputs.publica }}
+      LC_ALL: C.UTF-8
+    steps:
+      - name: Bajar el armador
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Preparar Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Preparar Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Elegir las fuentes del mes
+        id: mes
+        run: echo "mes=$(date -u +%Y-%m)" >> "$GITHUB_OUTPUT"
+
+      # El agua de los océanos, Natural Earth y los lagos (unos 1,3 GB) se bajan una vez por mes y quedan guardados
+      # en GitHub para los armados siguientes: así no se le piden de nuevo a quienes los publican en cada país.
+      - name: Recuperar las fuentes del mapa
+        uses: actions/cache@v4
+        with:
+          path: |
+            fuentes
+            planetiler.jar
+          key: fuentes-planetiler-0.10.2-${{ steps.mes.outputs.mes }}
+
+      - name: Preparar las herramientas
+        run: sh ci.sh preparar
+
+      - name: Bajar los datos de Geofabrik
+        id: bajar
+        run: sh ci.sh bajar
+
+      - name: Armar el mapa y las calles
+        if: steps.bajar.outputs.ya != '1'
+        run: sh ci.sh armar
+
+      - name: Subir a Cloudflare y comprobar
+        if: steps.bajar.outputs.ya != '1'
+        env:
+          VPA_CLAVE_B64: ${{ secrets.VPA_CLAVE }}
+        run: sh ci.sh subir
