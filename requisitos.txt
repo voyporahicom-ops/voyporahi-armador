@@ -1,0 +1,5 @@
+# pyosmium 4.3.1 (BSD-2-Clause) para calles_extraer.py, con la suma de cada paquete (Python 3.12 y 3.13, Linux x86_64).
+# Lo instala ci.sh preparar con «pip install --require-hashes»: si PyPI entregara otra cosa, la instalación falla.
+osmium==4.3.1 \
+    --hash=sha256:2ca8d9ab7595b17cc0eba608a5de66ee346ee1eacb32634688aa808f5b3bdbc7 \
+    --hash=sha256:08ce36ce104dbc7c4ea9601fd3d58fce6de61f4d42c5d6d9fe5149d50f909d60
